@@ -1,101 +1,93 @@
-﻿using Proto;
+﻿using BaileysCSharp.Core.Events;
+using BaileysCSharp.Core.Extensions;
+using BaileysCSharp.Core.Helper;
+using BaileysCSharp.Core.Logging;
+using BaileysCSharp.Core.Models;
+using BaileysCSharp.Core.Models.Sending.NonMedia;
+using BaileysCSharp.Core.NoSQL;
+using BaileysCSharp.Core.Sockets;
+using BaileysCSharp.Core.Types;
+using BaileysCSharp.Exceptions;
+using Proto;
 using QRCoder;
 using System.Buffers;
 using System.Diagnostics;
-using BaileysCSharp.Core.Events;
-using BaileysCSharp.Core.Helper;
-using BaileysCSharp.Core.Models;
-using BaileysCSharp.Core.NoSQL;
-using BaileysCSharp.Core.Extensions;
-using BaileysCSharp.Core.Sockets;
-using BaileysCSharp.Exceptions;
-using BaileysCSharp.Core.Models.Sending.Media;
-using BaileysCSharp.Core.Models.Sending.NonMedia;
-using BaileysCSharp.Core.Models.Sending;
-using BaileysCSharp.Core.Types;
-using BaileysCSharp.Core.Utils;
 using System.Text.Json;
-using System.Text;
-using BaileysCSharp.Core.Logging;
-using BaileysCSharp.Core.WABinary;
 
 namespace WhatsSocketConsole
-{
-    internal class Program
     {
+    internal class Program
+        {
 
         static List<WebMessageInfo> messages = new List<WebMessageInfo>();
-        static WASocket socket;
+        static WASocket? socket;
         public static object locker = new object();
-
         static void Main(string[] args)
-        {
-            var config = new SocketConfig()
             {
+            var config = new SocketConfig()
+                {
                 SessionName = "27665458845745067",
-            };
+                };
 
             var credsFile = Path.Join(config.CacheRoot, $"creds.json");
             AuthenticationCreds? authentication = null;
             if (File.Exists(credsFile))
-            {
+                {
                 authentication = AuthenticationCreds.Deserialize(File.ReadAllText(credsFile));
-            }
+                }
             authentication = authentication ?? AuthenticationUtils.InitAuthCreds();
 
             BaseKeyStore keys = new FileKeyStore(config.CacheRoot);
 
             config.Logger.Level = LogLevel.Raw;
             config.Auth = new AuthenticationState()
-            {
+                {
                 Creds = authentication,
                 Keys = keys
-            };
+                };
 
             socket = new WASocket(config);
 
-
             socket.EV.Auth.Update += Auth_Update;
             socket.EV.Connection.Update += Connection_Update;
-            socket.EV.Message.Upsert += Message_Upsert;
+            socket.EV.Message.Upsert += Message_Upsert1;
+            //socket.EV.Message.Upsert += Message_Upsert;
             socket.EV.MessageHistory.Set += MessageHistory_Set;
             socket.EV.Pressence.Update += Pressence_Update;
-
 
             socket.MakeSocket();
 
             Console.ReadLine();
-        }
-
-        private static void Pressence_Update(object? sender, PresenceModel e)
-        {
-            Console.WriteLine(JsonSerializer.Serialize(e));
-        }
-
-        private static void MessageHistory_Set(object? sender, MessageHistoryModel[] e)
-        {
-            messages.AddRange(e[0].Messages);
-            var jsons = messages.Select(x => x.ToJson()).ToArray();
-            var array = $"[\n{string.Join(",", jsons)}\n]";
-            Debug.WriteLine(array);
-        }
-
+            }
         private static async void Message_Upsert(object? sender, MessageEventModel e)
-        {
+            {
             //offline messages synced
             if (e.Type == MessageEventType.Append)
-            {
+                {
 
-            }
+                }
 
             //new messages
             if (e.Type == MessageEventType.Notify)
-            {
-                foreach (var msg in e.Messages)
                 {
+                foreach (var msg in e.Messages)
+                    {
+
+                    var botWhatsapp = new BotWhatsapp();
                     if (msg.Message == null)
                         continue;
 
+                    botWhatsapp.Menssage = msg.Message.Conversation.ToString();
+                    botWhatsapp.From = msg.Key.RemoteJid.ToString();
+                    botWhatsapp.PushName = msg.PushName.ToString();
+
+                    //Validar si es un mensaje
+                    bool isMsg = IsMenssage(msg);
+                    if (!isMsg) return;
+
+                    WelcomeAsync(botWhatsapp);
+                    Console.WriteLine(msg.Message.Conversation);
+                    /*
                     if (msg.Message.ImageMessage != null)
                     {
                         var result = await socket.DownloadMediaMessage(msg.Message);
@@ -122,8 +114,13 @@ namespace WhatsSocketConsole
                         var result = await socket.DownloadMediaMessage(msg.Message);
                         File.WriteAllBytes($"sticker.{MimeTypeUtils.GetExtension(result.MimeType)}", result.Data);
                     }
+                    if (msg.Message.Conversation != null)
+                    {
+                        Console.WriteLine(msg.Message.Conversation);
+                    }
 
-
+                    */
+                    /*
                     if (msg.Key.FromMe == false && (
                         (msg.Message.ExtendedTextMessage != null && msg.Message.ExtendedTextMessage.Text == "runtests")
                         ||
@@ -238,48 +235,187 @@ namespace WhatsSocketConsole
                         //var result = await socket.GroupInviteCode(groupId);
                         //var result = await socket.GroupGetInviteInfo("EzZfmQJDoyY7VPklVxVV9l");
                     }
+                    */
 
 
                     messages.Add(msg);
+                    }
                 }
             }
+
+        private static void Message_Upsert1(object? sender, MessageEventModel e)
+            {
+            //offline messages synced
+            if (e.Type == MessageEventType.Append)
+                {
+
+                }
+            if (e.Type == MessageEventType.Notify)
+                {
+                var botWhatsapp = new BotWhatsapp();
+                foreach (var msg in e.Messages)
+                    {
+                    if (msg.Message == null)
+                        continue;
+                    Console.WriteLine(msg.Message.Conversation);
+
+                    botWhatsapp.Menssage = msg.Message.Conversation.ToString();
+                    botWhatsapp.From = msg.Key.RemoteJid.ToString();
+                    botWhatsapp.PushName = msg.PushName.ToString();
+
+                    //Validar si es un mensaje
+                    bool isMsg = IsMenssage(msg);
+                    if (!isMsg) return;
+
+                    //Validar si tiene una orden activa con Sqlite
+                    //Si tiene una orden
+                    botWhatsapp = AnalyzeMessage(botWhatsapp);
+
+                    switch (botWhatsapp.StatusOrder)
+                        {
+                        case Status.WithoutOrdering:
+                            break;
+                        case Status.Ordering:
+                            MakeOrder(botWhatsapp);
+                            break;
+                        case Status.Selecting:
+                            MakeOrderCant(botWhatsapp);
+                            break;
+                        case Status.Closing:
+                            MakeOrder(botWhatsapp);
+                            break;
+                        case Status.Closed:
+                            MakeOrder(botWhatsapp);
+                            break;
+                        default:
+                            WelcomeAsync(botWhatsapp);
+                            break;
+                        }
+                    //Sino tiene Orden Activa es que va ordenar
+                    //1 - Palabras de Bienvenida
+                    //2 - Ponderle un menu de opciones
+                    //3 - 
+                    /*Task task = SendMenssageAsync(botWhatsapp,"Hola desde C#");
+                    task.Wait();*/
+                    messages.Add(msg);
+                    }
+                }
+            }
+
+        private static BotWhatsapp AnalyzeMessage(BotWhatsapp botWhatsapp)
+            {
+            List<string> welcomeKeywords = new List<string> { "menu", "ordenar", "ver", "paltos", "menú" };
+            List<string> menuKeywords = new List<string> { "menu", "ordenar", "ver", "paltos", "menú" };
+
+            botWhatsapp.Menssage = botWhatsapp.Menssage.ToLower();
+            foreach (string keyword in welcomeKeywords)
+            {
+                if (botWhatsapp.Menssage.Contains(keyword))
+                {
+                    botWhatsapp.StatusOrder = Status.Ordering;
+                }
+            }
+            foreach (string keyword in menuKeywords)
+            {
+                if (botWhatsapp.Menssage.Contains(keyword))
+                {
+                    botWhatsapp.StatusOrder = Status.Ordering;
+                }
+            }
+
+            return botWhatsapp;
+            }
+
+        private static async Task WelcomeAsync(BotWhatsapp botWhatsapp)
+        {
+            
+            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
         }
 
-        private static async void Connection_Update(object? sender, ConnectionState e)
+        private static async Task MakeOrderCant(BotWhatsapp botWhatsapp)
         {
+            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
+
+        }
+
+        private static async Task MakeOrder(BotWhatsapp botWhatsapp)
+        {
+            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
+
+        }
+
+        private static async Task SendMenssageAsync(BotWhatsapp botWhatsapp, string msg)
+        {
+            await socket.SendMessage(botWhatsapp.From, new TextMessageContent()
+            {
+                Text = msg,
+            });
+        }
+        private static bool IsMenssage(WebMessageInfo msg)
+            {
+            if (msg.Key.RemoteJid.ToString().Contains("status"))
+                {
+                return false;
+                }
+            return true;
+            }
+
+        /*
+         * Mensaje:
+From: status@broadcast
+Cliente: Sr. Acosta
+         */
+
+        private static void Pressence_Update(object? sender, PresenceModel e)
+            {
+            Console.WriteLine(JsonSerializer.Serialize(e));
+            }
+
+        private static void MessageHistory_Set(object? sender, MessageHistoryModel[] e)
+            {
+            messages.AddRange(e[0].Messages);
+            var jsons = messages.Select(x => x.ToJson()).ToArray();
+            var array = $"[\n{string.Join(",", jsons)}\n]";
+            Debug.WriteLine(array);
+            }
+
+
+
+        private static async void Connection_Update(object? sender, ConnectionState e)
+            {
             var connection = e;
             Debug.WriteLine(JsonSerializer.Serialize(connection));
             if (connection.QR != null)
-            {
+                {
                 QRCodeGenerator QrGenerator = new QRCodeGenerator();
                 QRCodeData QrCodeInfo = QrGenerator.CreateQrCode(connection.QR, QRCodeGenerator.ECCLevel.L);
                 AsciiQRCode qrCode = new AsciiQRCode(QrCodeInfo);
                 var data = qrCode.GetGraphic(1);
                 Console.WriteLine(data);
-            }
+                }
             if (connection.Connection == WAConnectionState.Close)
-            {
-                if (connection.LastDisconnect.Error is Boom boom && boom.Data?.StatusCode != (int)DisconnectReason.LoggedOut)
                 {
-                    try
+                if (connection.LastDisconnect.Error is Boom boom && boom.Data?.StatusCode != (int)DisconnectReason.LoggedOut)
                     {
+                    try
+                        {
                         Thread.Sleep(1000);
                         socket.MakeSocket();
-                    }
+                        }
                     catch (Exception)
-                    {
+                        {
 
+                        }
+                    }
+                else
+                    {
+                    Console.WriteLine("You are logged out");
                     }
                 }
-                else
-                {
-                    Console.WriteLine("You are logged out");
-                }
-            }
 
 
             if (connection.Connection == WAConnectionState.Open)
-            {
+                {
 
                 //var mentioned = await socket.SendMessage("27797798179@s.whatsapp.net ", new TextMessageContent()
                 //{
@@ -297,7 +433,6 @@ namespace WhatsSocketConsole
                 //    //    }
                 //    //]
                 //});
-
                 var result = await socket.QueryRecommendedNewsletters();
 
                 //var onWhatsApp = await socket.OnWhatsApp("+27797798179", "+15558889234");
@@ -342,26 +477,17 @@ namespace WhatsSocketConsole
                 //    Text = "Hi there from C#",
                 //});
 
+                }
             }
-        }
 
         private static void Auth_Update(object? sender, AuthenticationCreds e)
-        {
-            lock (locker)
             {
+            lock (locker)
+                {
                 var credsFile = Path.Join(socket.SocketConfig.CacheRoot, $"creds.json");
                 var json = AuthenticationCreds.Serialize(e);
                 File.WriteAllText(credsFile, json);
+                }
             }
         }
-
-
-
-
-
-
-
-
-
     }
-}
