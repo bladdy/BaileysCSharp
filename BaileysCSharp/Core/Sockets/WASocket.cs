@@ -9,6 +9,5 @@ namespace BaileysCSharp.Core.Sockets
         public WASocket([NotNull] SocketConfig config) : base(config)
         {
         }
-
-    }
+        }
 }

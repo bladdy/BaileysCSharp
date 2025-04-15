@@ -11,11 +11,12 @@ using static BaileysCSharp.Core.Utils.JidUtils;
 
 namespace BaileysCSharp.Core.NoSQL
 {
-    public class MemoryStore
+    public class MemoryStore: IDisposable
     {
         private static object locker = new object();
         LiteDB.LiteDatabase database;
 
+        private bool disposed = false;
         Store<ChatModel> chats;
         Store<MessageModel> messages;
         Store<ContactModel> contacts;
@@ -29,46 +30,41 @@ namespace BaileysCSharp.Core.NoSQL
             State = new ConnectionState();
             EV = ev;
             Logger = logger;
-            database = new LiteDatabase($"{root}\\store.db");
+            // Dispose of any existing database instance
+            lock (locker)
+            {
+                DisposeDb(); // Ensure any existing database instance is disposed
+                InitializeDatabase(root);
+            }
+
 
             chats = new Store<ChatModel>(database);
             contacts = new Store<ContactModel>(database);
             messages = new Store<MessageModel>(database);
             groupMetaData = new Store<GroupMetadataModel>(database);
 
-            EV.MessageHistory.Set += MessageHistory_Set;
-
-            EV.Connection.Update += Connection_Update;
-
-
-            EV.Contacts.Update += Contacts_Update;
-            EV.Contacts.Upsert += Contacts_Upsert;
-
-            EV.Message.Upsert += Message_Upsert;
-            EV.Message.Update += Message_Update;
-            EV.Message.Delete += Message_Delete;
-            EV.Receipt.Upsert += Receipt_Upsert;
-
-
-            EV.Chats.Upsert += Chats_Upsert;
-            EV.Chats.Update += Chats_Update;
-            EV.Chats.Delete += Chats_Delete;
-
-
-            EV.Group.Update += Group_Update;
-            EV.Group.Upsert += Group_Upsert;
-
-            EV.GroupParticipant.Update += GroupParticipant_Update;
-
-            //EV.OnMessagesMediaUpdate += EV_OnMessagesMediaUpdate;
-            //EV.OnBlockListUpdate += EV_OnBlockListUpdate;
-
+            SubscribeToEvents();
 
             messageList = messages.Where(x => x.RemoteJid != null).GroupBy(x => x.RemoteJid).ToDictionary(x => x.Key, x => x.Select(y => y.ToMessageInfo()).ToList());
             StartTimer();
             //Timer checkPoint = new Timer(OnCheckpoint, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
         }
-
+        private void InitializeDatabase(string root)
+            {
+            try
+                {
+                database = new LiteDatabase(new ConnectionString
+                    {
+                    Filename = $"{root}\\store.db",
+                    Connection = ConnectionType.Shared // Ensure shared access
+                    });
+                }
+            catch (Exception ex)
+                {
+                Logger.Error(ex, "Failed to initialize LiteDatabase");
+                throw;
+                }
+            }
         private void GroupParticipant_Update(object? sender, GroupParticipantUpdateModel e)
         {
             //TODO:
@@ -484,15 +480,57 @@ namespace BaileysCSharp.Core.NoSQL
         public EventEmitter EV { get; }
         public DefaultLogger Logger { get; }
         public void DisposeDb()
-        {
-            changes = true;
-            OnCheckpoint(null);
-            database?.Dispose();
-            checkPoint?.Dispose();
-        }
+            {
+            lock (locker)
+                {
+                if (database != null)
+                    {
+                    try
+                        {
+                        database.Checkpoint(); // Ensure all changes are flushed
+                        database.Dispose();
+                        }
+                    catch (Exception ex)
+                        {
+                        Logger.Warn(ex, "Error while disposing LiteDatabase");
+                        }
+                    finally
+                        {
+                        database = null; // Clear the reference
+                        }
+                    }
+                }
+            }
         public List<ContactModel> GetAllContact()
         {
             return contacts.Where(x => x.IsUser).ToList();
         }
-    }
+
+        public void Dispose()
+            {
+            if (!disposed)
+                {
+                DisposeDb();
+                disposed = true;
+                }
+            }
+
+        private void SubscribeToEvents()
+            {
+            EV.MessageHistory.Set += MessageHistory_Set;
+            EV.Connection.Update += Connection_Update;
+            EV.Contacts.Update += Contacts_Update;
+            EV.Contacts.Upsert += Contacts_Upsert;
+            EV.Message.Upsert += Message_Upsert;
+            EV.Message.Update += Message_Update;
+            EV.Message.Delete += Message_Delete;
+            EV.Receipt.Upsert += Receipt_Upsert;
+            EV.Chats.Upsert += Chats_Upsert;
+            EV.Chats.Update += Chats_Update;
+            EV.Chats.Delete += Chats_Delete;
+            EV.Group.Update += Group_Update;
+            EV.Group.Upsert += Group_Upsert;
+            EV.GroupParticipant.Update += GroupParticipant_Update;
+            }
+        }
 }

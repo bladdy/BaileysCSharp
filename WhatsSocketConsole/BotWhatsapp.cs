@@ -14,13 +14,22 @@ namespace WhatsSocketConsole
         public bool HasOrder { get; set; } = false;
         public Status StatusOrder { get; set; }
         public List<Item> Items { get; set; } = [];
-    }
+        public int? SelectedItem { get; set; }
+        public int? Quantity { get; set; }
+        public string PaymentMethod { get; set; }
+        public string CustomerName { get; set; }
+
+        }
     public enum Status
     {
         NoStatus,
         WithoutOrdering, 
         Ordering,
-        Selecting,
+        Selecting, 
+        RequestingName,
+        ReponsingName,
+        ReponsingPayment,
+        RequestingPayment,
         Closing,
         Closed
     }
@@ -30,7 +39,15 @@ namespace WhatsSocketConsole
         public string? Product { get; set; }
         public int Cant { get; set; }
         public bool HasOrder { get; set; }
+        public decimal Price { get; set; }
+        public decimal Subtotal => Price * Cant;
 
+
+        }
+    public class MenuItem
+    {
+    public string Name { get; set; } = "";
+    public decimal Price { get; set; }
+        }
 
     }
-}

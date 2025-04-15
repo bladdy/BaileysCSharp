@@ -22,6 +22,28 @@ namespace WhatsSocketConsole
         static List<WebMessageInfo> messages = new List<WebMessageInfo>();
         static WASocket? socket;
         public static object locker = new object();
+
+        // Puedes agregar esto como static en Program.cs o como servicio
+        static Dictionary<int, string> payMethod = new Dictionary<int, string>()
+        {
+            {1, "Efectivo" },
+            {2, "Tarjeta" },
+            {3, "Transferencia" }
+        };
+        static Dictionary<int, MenuItem> menuItems = new Dictionary<int, MenuItem>()
+        {
+            {1, new MenuItem { Name = "Tacos al Pastor", Price = 25.00m }},
+            {2, new MenuItem { Name = "Hamburguesa con Queso", Price = 35.50m }},
+            {3, new MenuItem { Name = "Pizza Margarita", Price = 45.00m }},
+            {4, new MenuItem { Name = "Agua", Price = 10.00m }},
+            {5, new MenuItem { Name = "Refresco", Price = 12.00m }}
+        };
+
+        // Guardar estados de conversación por número de usuario
+        static Dictionary<string, BotWhatsapp> botUsers = new Dictionary<string, BotWhatsapp>();
+
+
+
         static void Main(string[] args)
             {
             var config = new SocketConfig()
@@ -41,10 +63,10 @@ namespace WhatsSocketConsole
 
             config.Logger.Level = LogLevel.Raw;
             config.Auth = new AuthenticationState()
-                {
+            {
                 Creds = authentication,
                 Keys = keys
-                };
+            };
 
             socket = new WASocket(config);
 
@@ -59,192 +81,12 @@ namespace WhatsSocketConsole
 
             Console.ReadLine();
             }
-        private static async void Message_Upsert(object? sender, MessageEventModel e)
-            {
-            //offline messages synced
-            if (e.Type == MessageEventType.Append)
-                {
 
-                }
-
-            //new messages
-            if (e.Type == MessageEventType.Notify)
-                {
-                foreach (var msg in e.Messages)
-                    {
-
-                    var botWhatsapp = new BotWhatsapp();
-                    if (msg.Message == null)
-                        continue;
-
-                    botWhatsapp.Menssage = msg.Message.Conversation.ToString();
-                    botWhatsapp.From = msg.Key.RemoteJid.ToString();
-                    botWhatsapp.PushName = msg.PushName.ToString();
-
-                    //Validar si es un mensaje
-                    bool isMsg = IsMenssage(msg);
-                    if (!isMsg) return;
-
-                    WelcomeAsync(botWhatsapp);
-                    Console.WriteLine(msg.Message.Conversation);
-                    /*
-                    if (msg.Message.ImageMessage != null)
-                    {
-                        var result = await socket.DownloadMediaMessage(msg.Message);
-                    }
-
-                    if (msg.Message.DocumentMessage != null)
-                    {
-                        var result = await socket.DownloadMediaMessage(msg.Message);
-                        File.WriteAllBytes(result.FileName, result.Data);
-                    }
-
-                    if (msg.Message.AudioMessage != null)
-                    {
-                        var result = await socket.DownloadMediaMessage(msg.Message);
-                        File.WriteAllBytes($"audio.{MimeTypeUtils.GetExtension(result.MimeType)}", result.Data);
-                    }
-                    if (msg.Message.VideoMessage != null)
-                    {
-                        var result = await socket.DownloadMediaMessage(msg.Message);
-                        File.WriteAllBytes($"video.{MimeTypeUtils.GetExtension(result.MimeType)}", result.Data);
-                    }
-                    if (msg.Message.StickerMessage != null)
-                    {
-                        var result = await socket.DownloadMediaMessage(msg.Message);
-                        File.WriteAllBytes($"sticker.{MimeTypeUtils.GetExtension(result.MimeType)}", result.Data);
-                    }
-                    if (msg.Message.Conversation != null)
-                    {
-                        Console.WriteLine(msg.Message.Conversation);
-                    }
-
-                    */
-                    /*
-                    if (msg.Key.FromMe == false && (
-                        (msg.Message.ExtendedTextMessage != null && msg.Message.ExtendedTextMessage.Text == "runtests")
-                        ||
-                        (msg.Message.Conversation != null && msg.Message.Conversation == "runtests")
-                        )
-                        )
-                    {
-                        var jid = JidUtils.JidDecode(msg.Key.Id);
-                        // send a simple text!
-                        var standard = await socket.SendMessage(msg.Key.RemoteJid, new TextMessageContent()
-                        {
-                            Text = "Hi there from C#",
-                        });
-
-                        ////send a reply messagge
-                        //var quoted = await socket.SendMessage(msg.Key.RemoteJid,
-                        //    new TextMessageContent() { Text = "Hi this is a C# reply" },
-                        //    new MessageGenerationOptionsFromContent()
-                        //    {
-                        //        Quoted = msg
-                        //    });
-                        //
-                        //
-                        //// send a mentions message
-                        //var mentioned = await socket.SendMessage(msg.Key.RemoteJid, new TextMessageContent()
-                        //{
-                        //    Text = $"Hi @{jid.User} from C# with mention",
-                        //    Mentions = [msg.Key.RemoteJid]
-                        //});
-                        //
-                        //// send a contact!
-                        //var contact = await socket.SendMessage(msg.Key.RemoteJid, new ContactMessageContent()
-                        //{
-                        //    Contact = new ContactShareModel()
-                        //    {
-                        //        ContactNumber = jid.User,
-                        //        FullName = $"{msg.PushName}",
-                        //        Organization = ""
-                        //    }
-                        //});
-                        //
-                        //// send a location! //48.858221124792756, 2.294466243303683
-                        //var location = await socket.SendMessage(msg.Key.RemoteJid, new LocationMessageContent()
-                        //{
-                        //    Location = new Message.Types.LocationMessage()
-                        //    {
-                        //        DegreesLongitude = 48.858221124792756,
-                        //        DegreesLatitude = 2.294466243303683,
-                        //    }
-                        //});
-                        //
-                        ////react
-                        //var react = await socket.SendMessage(msg.Key.RemoteJid, new ReactMessageContent()
-                        //{
-                        //    Key = msg.Key,
-                        //    ReactText = "💖"
-                        //});
-                        //
-                        //// Sending image
-                        var imageMessage = await socket.SendMessage(msg.Key.RemoteJid, new ImageMessageContent()
-                        {
-                            Image = File.Open($"{Directory.GetCurrentDirectory()}\\Media\\cat.jpeg", FileMode.Open),
-                            Caption = "Cat.jpeg"
-                        });
-
-                        // send an audio file
-                        var audioMessage = await socket.SendMessage(msg.Key.RemoteJid, new AudioMessageContent()
-                        {
-                            Audio = File.Open($"{Directory.GetCurrentDirectory()}\\Media\\sonata.mp3", FileMode.Open),
-                        });
-
-                        // send an audio file
-                        var videoMessage = await socket.SendMessage(msg.Key.RemoteJid, new VideoMessageContent()
-                        {
-                            Video = File.Open($"{Directory.GetCurrentDirectory()}\\Media\\ma_gif.mp4", FileMode.Open),
-                            GifPlayback = true
-                        });
-
-                        // send a document file
-                        var documentMessage = await socket.SendMessage(msg.Key.RemoteJid, new DocumentMessageContent()
-                        {
-                            Document = File.Open($"{Directory.GetCurrentDirectory()}\\Media\\file.pdf", FileMode.Open),
-                            Mimetype = "application/pdf",
-                            FileName = "proposal.pdf",
-                        });
-
-
-
-                        //var group = await socket.GroupCreate("Test", [chatId]);
-                        //await socket.GroupUpdateSubject(groupId, "Subject Nice");
-                        //await socket.GroupUpdateDescription(groupId, "Description Nice");
-
-
-                        // send a simple text!
-                        //var standard = await socket.SendMessage(groupId, new TextMessageContent()
-                        //{
-                        //    Text = "Hi there from C#"
-                        //});
-
-
-                        //var groupId = "@g.us";
-                        //var chatId = "@s.whatsapp.net";
-                        //var chatId2 = "@s.whatsapp.net";
-
-                        //await socket.GroupSettingUpdate(groupId, GroupSetting.Not_Announcement);
-
-                        //await socket.GroupMemberAddMode(groupId, MemberAddMode.All_Member_Add); 
-
-                        //await socket.GroupParticipantsUpdate(groupId, [chatId2], ParticipantAction.Promote);
-                        //await socket.GroupParticipantsUpdate(groupId, [chatId2], ParticipantAction.Demote);
-
-                        //var result = await socket.GroupInviteCode(groupId);
-                        //var result = await socket.GroupGetInviteInfo("EzZfmQJDoyY7VPklVxVV9l");
-                    }
-                    */
-
-
-                    messages.Add(msg);
-                    }
-                }
-            }
 
         private static void Message_Upsert1(object? sender, MessageEventModel e)
             {
+
+
             //offline messages synced
             if (e.Type == MessageEventType.Append)
                 {
@@ -252,28 +94,41 @@ namespace WhatsSocketConsole
                 }
             if (e.Type == MessageEventType.Notify)
                 {
-                var botWhatsapp = new BotWhatsapp();
                 foreach (var msg in e.Messages)
                     {
                     if (msg.Message == null)
                         continue;
-                    Console.WriteLine(msg.Message.Conversation);
+                    string from = msg.Key.RemoteJid.ToString();
+                    string incomingText = msg.Message.ExtendedTextMessage.Text;
 
-                    botWhatsapp.Menssage = msg.Message.Conversation.ToString();
-                    botWhatsapp.From = msg.Key.RemoteJid.ToString();
-                    botWhatsapp.PushName = msg.PushName.ToString();
+                    BotWhatsapp botWhatsapp;
+                    if (botUsers.ContainsKey(from))
+                        {
+                        botWhatsapp = botUsers[from];
+                        botWhatsapp.Menssage = incomingText; // Actualizamos solo el texto
+                        }
+                    else
+                        {
+                        botWhatsapp = new BotWhatsapp
+                            {
+                            Menssage = incomingText,
+                            From = from,
+                            PushName = msg.PushName.ToString(),
+                            StatusOrder = Status.NoStatus,
+                            Items = new List<Item>() // importante inicializar si es nuevo
+                            };
+                        }
 
                     //Validar si es un mensaje
                     bool isMsg = IsMenssage(msg);
                     if (!isMsg) return;
 
-                    //Validar si tiene una orden activa con Sqlite
-                    //Si tiene una orden
                     botWhatsapp = AnalyzeMessage(botWhatsapp);
 
                     switch (botWhatsapp.StatusOrder)
                         {
                         case Status.WithoutOrdering:
+                            WelcomeAsync(botWhatsapp);
                             break;
                         case Status.Ordering:
                             MakeOrder(botWhatsapp);
@@ -281,22 +136,32 @@ namespace WhatsSocketConsole
                         case Status.Selecting:
                             MakeOrderCant(botWhatsapp);
                             break;
+                        case Status.RequestingName:
+                            AskCustomerName(botWhatsapp);
+                            botWhatsapp.StatusOrder = Status.ReponsingName;
+                            break;
+
+                        case Status.RequestingPayment:
+                            AskPaymentMethod(botWhatsapp);
+                            botWhatsapp.StatusOrder = Status.ReponsingPayment;
+                            break;
+
                         case Status.Closing:
-                            MakeOrder(botWhatsapp);
+                            MakeOrderConfirmation(botWhatsapp);
                             break;
                         case Status.Closed:
-                            MakeOrder(botWhatsapp);
+                            FinalizeOrder(botWhatsapp);
+                            botWhatsapp.StatusOrder = Status.WithoutOrdering;
+                            botWhatsapp.Items.Clear();
+                            botWhatsapp.SelectedItem = null;
+                            botWhatsapp.Quantity = null;
+                            botWhatsapp.HasOrder = false;
                             break;
                         default:
                             WelcomeAsync(botWhatsapp);
                             break;
                         }
-                    //Sino tiene Orden Activa es que va ordenar
-                    //1 - Palabras de Bienvenida
-                    //2 - Ponderle un menu de opciones
-                    //3 - 
-                    /*Task task = SendMenssageAsync(botWhatsapp,"Hola desde C#");
-                    task.Wait();*/
+                    botUsers[from] = botWhatsapp;
                     messages.Add(msg);
                     }
                 }
@@ -304,53 +169,199 @@ namespace WhatsSocketConsole
 
         private static BotWhatsapp AnalyzeMessage(BotWhatsapp botWhatsapp)
             {
-            List<string> welcomeKeywords = new List<string> { "menu", "ordenar", "ver", "paltos", "menú" };
-            List<string> menuKeywords = new List<string> { "menu", "ordenar", "ver", "paltos", "menú" };
+            string msg = botWhatsapp.Menssage.ToLower().Trim();
 
-            botWhatsapp.Menssage = botWhatsapp.Menssage.ToLower();
-            foreach (string keyword in welcomeKeywords)
-            {
-                if (botWhatsapp.Menssage.Contains(keyword))
+            List<string> menuKeywords = new List<string> { "menu", "ordenar", "ver", "platos", "menú", "terminar", "finalizar" };
+
+            switch (botWhatsapp.StatusOrder)
                 {
-                    botWhatsapp.StatusOrder = Status.Ordering;
+                case Status.NoStatus:
+                case Status.WithoutOrdering:
+                    foreach (var keyword in menuKeywords)
+                        {
+                        if (msg.Contains(keyword))
+                            {
+                            botWhatsapp.StatusOrder = Status.Ordering;
+                            return botWhatsapp;
+                            }
+                        }
+                    botWhatsapp.StatusOrder = Status.WithoutOrdering; // Explícito si no detecta keyword
+                    break;
+
+                case Status.Ordering:
+                    if (int.TryParse(msg, out int selectedItem) && menuItems.ContainsKey(selectedItem))
+                        {
+                        botWhatsapp.SelectedItem = selectedItem;
+                        botWhatsapp.StatusOrder = Status.Selecting;
+                        }
+                    else if (msg.Contains("terminar") || msg.Contains("finalizar"))
+                        {
+                        botWhatsapp.StatusOrder = Status.Closing; // Cambia al estado de cierre si quieren terminar
+                        }
+                    break;
+
+                case Status.Selecting:
+                    if (int.TryParse(msg, out int quantity) && quantity > 0)
+                        {
+                        botWhatsapp.Quantity = quantity;
+                        botWhatsapp.Items.Add(new Item
+                            {
+                            Id = botWhatsapp.SelectedItem.Value,
+                            Product = menuItems[botWhatsapp.SelectedItem.Value].Name,
+                            Cant = quantity,
+                            HasOrder = true,
+                            Price = menuItems[botWhatsapp.SelectedItem.Value].Price,
+                            });
+
+                        botWhatsapp.HasOrder = true;
+                        botWhatsapp.StatusOrder = Status.Closing;
+                        }
+                    break;
+
+                case Status.Closing:
+                    if (msg.Contains("2") || msg.Contains("si") || msg.Contains("confirmar"))
+                        {
+                        botWhatsapp.StatusOrder = Status.RequestingName; // PRIMERO pago
+                        }
+                    else if (msg.Contains("3") || msg.Contains("cancelar"))
+                        {
+                        botWhatsapp.StatusOrder = Status.WithoutOrdering;
+                        botWhatsapp.Items.Clear();
+                        botWhatsapp.SelectedItem = null;
+                        botWhatsapp.Quantity = null;
+                        botWhatsapp.HasOrder = false;
+                        }
+                    else if (msg.Contains("1") || msg.Contains("ordenar"))
+                        {
+                        botWhatsapp.StatusOrder = Status.Ordering;
+                        }
+                    break;
+                case Status.ReponsingPayment:
+                    botWhatsapp.PaymentMethod = payMethod[Convert.ToInt32(botWhatsapp.Menssage)];
+                    botWhatsapp.StatusOrder = Status.Closed;
+                    break;
+
+                case Status.ReponsingName:
+                    botWhatsapp.CustomerName = botWhatsapp.Menssage.Trim();
+                    botWhatsapp.StatusOrder = Status.RequestingPayment;
+                    break;
+
+
+                case Status.Closed:
+                    botWhatsapp.StatusOrder = Status.WithoutOrdering;
+                    break;
                 }
-            }
-            foreach (string keyword in menuKeywords)
-            {
-                if (botWhatsapp.Menssage.Contains(keyword))
-                {
-                    botWhatsapp.StatusOrder = Status.Ordering;
-                }
-            }
 
             return botWhatsapp;
             }
 
+
+        private static async Task FinalizeOrder(BotWhatsapp botWhatsapp)
+            {
+            decimal total = 0;
+            string resumen = "*🧾 Tu factura *\n";
+            Random random = new Random();
+            resumen += $"👤 Nombre: {botWhatsapp.CustomerName}\n";
+            resumen += $"💳 Pago: {botWhatsapp.PaymentMethod}\n";
+
+            resumen += "----------------------------------\n";
+            resumen += $"N° Orden: {random.Next(1000, 10000)}\n";
+            resumen += "----------------------------------\n";
+
+            foreach (var item in botWhatsapp.Items)
+                {
+                resumen += $"{item.Cant}x {item.Product} - ${item.Price:F2} c/u = ${item.Subtotal:F2}\n";
+                total += item.Subtotal;
+                }
+
+            resumen += "----------------------------------\n";
+            resumen += $"*Total a pagar:* ${total:F2}\n\n";
+            resumen += "🥳 ¡Tu orden ha sido confirmada y está en proceso! Gracias por usar *Botanas John*.";
+
+            await SendMenssageAsync(botWhatsapp, resumen);
+            }
+
         private static async Task WelcomeAsync(BotWhatsapp botWhatsapp)
-        {
-            
-            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
-        }
+            {
+            await SendMenssageAsync(botWhatsapp, "Bienvenid@s a *Botanas John* \nEstas son las opciones \nMenú, ordenar y paltos");
+            }
+        private static async Task AskCustomerName(BotWhatsapp botWhatsapp)
+            {
+            await SendMenssageAsync(botWhatsapp, "¿A nombre de quién estará la orden?");
+            }
+
+        private static async Task AskPaymentMethod(BotWhatsapp botWhatsapp)
+            {
+            string msn = "¿Cuál será el método de pago?\n";
+            msn += "1 -  Efectivo\n";
+            msn += "2 -  Tarjeta\n";
+            msn += "3 -  Transferencia\n\n";
+            msn += "*Escribe el número del método de pago.*";
+
+            await SendMenssageAsync(botWhatsapp, msn);
+            }
 
         private static async Task MakeOrderCant(BotWhatsapp botWhatsapp)
-        {
-            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
+            {
+            if (botWhatsapp.SelectedItem != null && menuItems.ContainsKey(botWhatsapp.SelectedItem.Value))
+                {
+                string itemName = menuItems[botWhatsapp.SelectedItem.Value].Name;
+                await SendMenssageAsync(botWhatsapp, $"Has elegido *{itemName}*.\n¿Cuántas unidades deseas?");
+                }
+            else
+                {
+                botWhatsapp.StatusOrder = Status.Ordering;
+                await MakeOrder(botWhatsapp);
+                }
+            }
 
-        }
+        private static async Task MakeOrderConfirmation(BotWhatsapp botWhatsapp)
+            {
+            if (botWhatsapp.Items.Any())
+                {
+                decimal total = 0;
+                string resumen = "*🧾 Tu factura provisional:*\n";
+                resumen += "----------------------------------\n";
+
+                foreach (var item in botWhatsapp.Items)
+                    {
+                    resumen += $"{item.Cant}x {item.Product} - ${item.Price:F2} c/u = ${item.Subtotal:F2}\n";
+                    total += item.Subtotal;
+                    }
+
+                resumen += "----------------------------------\n";
+                resumen += $"*Total a pagar:* ${total:F2}\n\n";
+                resumen += "¿Deseas *Seguir Ordenando (1)*\n *Confirmar la Orden (2)* o *Cancelarla (3)*?\n\n";
+                resumen += "*Escribe el número dela opcion.*";
+
+                await SendMenssageAsync(botWhatsapp, resumen);
+                }
+            else
+                {
+                botWhatsapp.StatusOrder = Status.Ordering;
+                await MakeOrder(botWhatsapp);
+                }
+            }
+
 
         private static async Task MakeOrder(BotWhatsapp botWhatsapp)
-        {
-            await SendMenssageAsync(botWhatsapp, "Bienvenida a *Botanas John* \nEstas son las opciones\n1-menu ordenar, ver paltos, menú");
-
-        }
+            {
+            string menu = "🍽️ *Menú de Botanas John*:\n";
+            foreach (var item in menuItems)
+                {
+                menu += $"{item.Key}. {item.Value.Name} - {item.Value.Price}\n";
+                }
+            menu += "\n*Escribe el número del platillo que deseas ordenar.*";
+            await SendMenssageAsync(botWhatsapp, menu);
+            }
 
         private static async Task SendMenssageAsync(BotWhatsapp botWhatsapp, string msg)
-        {
-            await socket.SendMessage(botWhatsapp.From, new TextMessageContent()
             {
+            await socket.SendMessage(botWhatsapp.From, new TextMessageContent()
+                {
                 Text = msg,
-            });
-        }
+                });
+            }
         private static bool IsMenssage(WebMessageInfo msg)
             {
             if (msg.Key.RemoteJid.ToString().Contains("status"))
@@ -359,17 +370,10 @@ namespace WhatsSocketConsole
                 }
             return true;
             }
-
-        /*
-         * Mensaje:
-From: status@broadcast
-Cliente: Sr. Acosta
-         */
-
         private static void Pressence_Update(object? sender, PresenceModel e)
-            {
+        {
             Console.WriteLine(JsonSerializer.Serialize(e));
-            }
+        }
 
         private static void MessageHistory_Set(object? sender, MessageHistoryModel[] e)
             {
@@ -378,8 +382,6 @@ Cliente: Sr. Acosta
             var array = $"[\n{string.Join(",", jsons)}\n]";
             Debug.WriteLine(array);
             }
-
-
 
         private static async void Connection_Update(object? sender, ConnectionState e)
             {
